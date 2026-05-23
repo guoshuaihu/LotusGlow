@@ -31,6 +31,8 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class ProductService {
 
+    private static final int DEFAULT_LOW_STOCK_THRESHOLD = 5;
+
     private final ProductRepository productRepository;
     private final ProductSkuRepository productSkuRepository;
     private final ProductMediaRepository productMediaRepository;
@@ -64,11 +66,14 @@ public class ProductService {
         return response;
     }
 
-    public List<Map<String, Object>> listAdminProducts(String keyword, Long categoryId) {
+    public List<Map<String, Object>> listAdminProducts(String keyword, Long categoryId, Boolean lowStockOnly, Integer stockThreshold) {
+        int threshold = normalizeStockThreshold(stockThreshold);
         return productRepository.findAll().stream()
             .filter(product -> categoryId == null || categoryId.equals(product.getCategoryId()))
             .filter(product -> matchesKeyword(product, keyword))
-            .map(product -> getAdminProductDetail(product.getId()))
+            .sorted((left, right) -> Long.compare(right.getId(), left.getId()))
+            .map(product -> getAdminProductDetail(product.getId(), threshold))
+            .filter(product -> !Boolean.TRUE.equals(lowStockOnly) || Boolean.TRUE.equals(product.get("lowStock")))
             .toList();
     }
 
@@ -164,10 +169,16 @@ public class ProductService {
         response.put("stock", sku.getStock());
         response.put("beforeStock", beforeStock);
         response.put("reason", reason);
+        response.put("lowStock", isLowStockSku(sku, DEFAULT_LOW_STOCK_THRESHOLD));
+        response.put("lowStockThreshold", DEFAULT_LOW_STOCK_THRESHOLD);
         return response;
     }
 
     public Map<String, Object> getAdminProductDetail(Long productId) {
+        return getAdminProductDetail(productId, DEFAULT_LOW_STOCK_THRESHOLD);
+    }
+
+    public Map<String, Object> getAdminProductDetail(Long productId, int stockThreshold) {
         Product product = productRepository.findById(productId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "商品不存在"));
         Map<String, Object> response = new LinkedHashMap<>();
@@ -187,8 +198,34 @@ public class ProductService {
         response.put("status", product.getStatus());
         response.put("coverImage", product.getCoverImage());
         response.put("media", getMediaMaps(productId));
-        response.put("skus", getSkuMaps(productId, true));
+        List<Map<String, Object>> skus = getSkuMaps(productId, true, stockThreshold);
+        long lowStockSkuCount = skus.stream()
+            .filter(sku -> Boolean.TRUE.equals(sku.get("lowStock")))
+            .count();
+        response.put("skus", skus);
+        response.put("lowStock", lowStockSkuCount > 0);
+        response.put("lowStockSkuCount", lowStockSkuCount);
+        response.put("lowStockThreshold", stockThreshold);
         return response;
+    }
+
+    public List<Map<String, Object>> listInventoryRecords(Long productId, Long skuId) {
+        Product product = productRepository.findById(productId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Product not found"));
+        List<InventoryChangeRecord> records;
+        if (skuId == null) {
+            records = inventoryChangeRecordRepository.findByProductIdOrderByIdDesc(product.getId());
+        } else {
+            ProductSku sku = productSkuRepository.findById(skuId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "SKU not found"));
+            if (!product.getId().equals(sku.getProductId())) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "SKU does not belong to product");
+            }
+            records = inventoryChangeRecordRepository.findByProductIdAndSkuIdOrderByIdDesc(product.getId(), skuId);
+        }
+        return records.stream()
+            .map(this::toInventoryRecordMap)
+            .toList();
     }
 
     public Product getOnSaleProduct(Long productId) {
@@ -358,6 +395,10 @@ public class ProductService {
     }
 
     private List<Map<String, Object>> getSkuMaps(Long productId, boolean includeDisabled) {
+        return getSkuMaps(productId, includeDisabled, DEFAULT_LOW_STOCK_THRESHOLD);
+    }
+
+    private List<Map<String, Object>> getSkuMaps(Long productId, boolean includeDisabled, int stockThreshold) {
         List<ProductSku> skus = includeDisabled
             ? productSkuRepository.findByProductIdOrderByIdAsc(productId)
             : productSkuRepository.findByProductIdAndStatus(productId, SkuStatus.ENABLED);
@@ -373,9 +414,33 @@ public class ProductService {
                 map.put("stock", sku.getStock());
                 map.put("status", sku.getStatus());
                 map.put("skuSummary", buildSkuSummary(sku));
+                map.put("lowStock", isLowStockSku(sku, stockThreshold));
+                map.put("lowStockThreshold", stockThreshold);
                 return map;
             })
             .toList();
+    }
+
+    private boolean isLowStockSku(ProductSku sku, int stockThreshold) {
+        return sku.getStatus() == SkuStatus.ENABLED && sku.getStock() != null && sku.getStock() <= stockThreshold;
+    }
+
+    private int normalizeStockThreshold(Integer stockThreshold) {
+        return stockThreshold == null || stockThreshold < 0 ? DEFAULT_LOW_STOCK_THRESHOLD : stockThreshold;
+    }
+
+    private Map<String, Object> toInventoryRecordMap(InventoryChangeRecord record) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", record.getId());
+        map.put("productId", record.getProductId());
+        map.put("skuId", record.getSkuId());
+        map.put("beforeStock", record.getBeforeStock());
+        map.put("afterStock", record.getAfterStock());
+        map.put("changeReason", record.getChangeReason());
+        map.put("operatorId", record.getOperatorId());
+        map.put("operatorName", record.getOperatorName());
+        map.put("createdAt", record.getCreatedAt());
+        return map;
     }
 
     private boolean isFavorited(Long productId) {

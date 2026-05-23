@@ -18,13 +18,19 @@ export const adminApi = {
   getCategories() {
     return apiRequest<any[]>("/api/admin/categories");
   },
-  getProducts(params: { keyword?: string; categoryId?: number | "" } = {}) {
+  getProducts(params: { keyword?: string; categoryId?: number | ""; lowStockOnly?: boolean; stockThreshold?: number | "" } = {}) {
     const search = new URLSearchParams();
     if (params.keyword) {
       search.set("keyword", params.keyword);
     }
     if (params.categoryId) {
       search.set("categoryId", String(params.categoryId));
+    }
+    if (params.lowStockOnly) {
+      search.set("lowStockOnly", "true");
+    }
+    if (params.stockThreshold !== undefined && params.stockThreshold !== "") {
+      search.set("stockThreshold", String(params.stockThreshold));
     }
     const query = search.toString();
     return apiRequest<any[]>(`/api/admin/products${query ? `?${query}` : ""}`);
@@ -55,6 +61,14 @@ export const adminApi = {
       method: "PUT",
       body: JSON.stringify(payload),
     });
+  },
+  getInventoryRecords(productId: number, skuId?: number) {
+    const search = new URLSearchParams();
+    if (skuId) {
+      search.set("skuId", String(skuId));
+    }
+    const query = search.toString();
+    return apiRequest<any[]>(`/api/admin/products/${productId}/inventory-records${query ? `?${query}` : ""}`);
   },
   getOrders() {
     return apiRequest<any[]>("/api/admin/orders");

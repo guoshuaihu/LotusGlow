@@ -39,9 +39,9 @@ public class AdminOperationService {
         return result;
     }
 
-    public List<Map<String, Object>> listProducts(String keyword, Long categoryId) {
+    public List<Map<String, Object>> listProducts(String keyword, Long categoryId, Boolean lowStockOnly, Integer stockThreshold) {
         adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
-        return productService.listAdminProducts(keyword, categoryId);
+        return productService.listAdminProducts(keyword, categoryId, lowStockOnly, stockThreshold);
     }
 
     public List<Map<String, Object>> listCategories() {
@@ -52,6 +52,11 @@ public class AdminOperationService {
     public Map<String, Object> getProduct(Long productId) {
         adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
         return productService.getAdminProductDetail(productId);
+    }
+
+    public List<Map<String, Object>> listInventoryRecords(Long productId, Long skuId) {
+        adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
+        return productService.listInventoryRecords(productId, skuId);
     }
 
     public Map<String, Object> createCategory(String name, String icon, Integer sortOrder) {

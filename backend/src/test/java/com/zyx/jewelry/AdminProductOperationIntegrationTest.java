@@ -107,6 +107,46 @@ class AdminProductOperationIntegrationTest {
             .andExpect(status().isForbidden());
     }
 
+    @Test
+    void shouldListLowStockProductsAndInventoryRecords() throws Exception {
+        String token = loginAdmin("merch", "Merch@123");
+        Long categoryId = createCategory(token, "Inventory", "I", 10);
+        ProductFixture product = createProduct(token, categoryId, "Low Stock Ring", "Needs replenishment", "LOW-001");
+
+        mockMvc.perform(put("/api/admin/products/" + product.productId() + "/stock")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "skuId": %d,
+                      "newStock": 2,
+                      "reason": "stock count correction"
+                    }
+                    """.formatted(product.skuId())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.lowStock").value(true))
+            .andExpect(jsonPath("$.data.lowStockThreshold").value(5));
+
+        mockMvc.perform(get("/api/admin/products")
+                .header("Authorization", bearer(token))
+                .param("lowStockOnly", "true")
+                .param("stockThreshold", "5"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].name").value("Low Stock Ring"))
+            .andExpect(jsonPath("$.data[0].lowStock").value(true))
+            .andExpect(jsonPath("$.data[0].lowStockSkuCount").value(1))
+            .andExpect(jsonPath("$.data[0].skus[0].lowStock").value(true));
+
+        mockMvc.perform(get("/api/admin/products/" + product.productId() + "/inventory-records")
+                .header("Authorization", bearer(token))
+                .param("skuId", String.valueOf(product.skuId())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].skuId").value(product.skuId()))
+            .andExpect(jsonPath("$.data[0].beforeStock").value(6))
+            .andExpect(jsonPath("$.data[0].afterStock").value(2))
+            .andExpect(jsonPath("$.data[0].changeReason").value("stock count correction"));
+    }
+
     private Long createCategory(String token, String name, String icon, Integer sortOrder) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/admin/categories")
                 .header("Authorization", bearer(token))

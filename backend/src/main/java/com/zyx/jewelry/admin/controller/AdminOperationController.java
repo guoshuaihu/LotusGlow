@@ -46,13 +46,21 @@ public class AdminOperationController {
 
     @GetMapping("/products")
     public ApiResponse<List<Map<String, Object>>> listProducts(@RequestParam(required = false) String keyword,
-                                                               @RequestParam(required = false) Long categoryId) {
-        return ApiResponse.success(adminOperationService.listProducts(keyword, categoryId));
+                                                               @RequestParam(required = false) Long categoryId,
+                                                               @RequestParam(required = false) Boolean lowStockOnly,
+                                                               @RequestParam(required = false) Integer stockThreshold) {
+        return ApiResponse.success(adminOperationService.listProducts(keyword, categoryId, lowStockOnly, stockThreshold));
     }
 
     @GetMapping("/products/{productId}")
     public ApiResponse<Map<String, Object>> getProduct(@PathVariable Long productId) {
         return ApiResponse.success(adminOperationService.getProduct(productId));
+    }
+
+    @GetMapping("/products/{productId}/inventory-records")
+    public ApiResponse<List<Map<String, Object>>> listInventoryRecords(@PathVariable Long productId,
+                                                                       @RequestParam(required = false) Long skuId) {
+        return ApiResponse.success(adminOperationService.listInventoryRecords(productId, skuId));
     }
 
     @PostMapping("/categories")

@@ -125,6 +125,14 @@
               </select>
             </label>
             <button @click="loadProducts">查询</button>
+            <label class="checkbox-row product-filter-toggle">
+              <input v-model="productFilters.lowStockOnly" type="checkbox" />
+              <span>低库存</span>
+            </label>
+            <label>
+              <span>预警阈值</span>
+              <input v-model.number="productFilters.stockThreshold" type="number" min="0" />
+            </label>
             <button class="secondary-button" @click="resetProductFilters">重置</button>
           </div>
 
@@ -146,9 +154,11 @@
                 </div>
                 <div v-if="product.skus?.length" class="sku-list">
                   <div v-for="sku in product.skus" :key="sku.id" class="sku-row">
-                    <span>{{ sku.material }} / {{ sku.ringSize }} / {{ sku.weightDesc }}</span>
-                    <strong>库存 {{ sku.stock }}</strong>
-                    <button class="tiny-button" @click="adjustStock(product, sku)">改库存</button>
+                    <span class="sku-row__summary">{{ sku.material }} / {{ sku.ringSize }} / {{ sku.weightDesc }}</span>
+                    <strong :class="{ 'stock-warning': sku.lowStock }">库存 {{ sku.stock }}</strong>
+                    <span v-if="sku.lowStock" class="low-stock-chip">需补货</span>
+                    <button type="button" class="tiny-button" @click="adjustStock(product, sku)">改库存</button>
+                    <button type="button" class="tiny-button" @click="openInventoryRecords(product, sku)">流水</button>
                   </div>
                 </div>
                 <div class="product-card__actions">
@@ -157,6 +167,31 @@
               </div>
             </article>
           </div>
+
+          <section v-if="inventoryPanel.productId" class="inventory-panel">
+            <div class="panel__header">
+              <div>
+                <h3>库存流水</h3>
+                <p>{{ inventoryPanel.productName }} · {{ inventoryPanel.skuSummary }}</p>
+              </div>
+              <button type="button" class="secondary-button" @click="closeInventoryRecords">关闭</button>
+            </div>
+            <div v-if="inventoryPanel.loading" class="empty-state">加载中...</div>
+            <div v-else-if="inventoryPanel.error" class="empty-state">{{ inventoryPanel.error }}</div>
+            <div v-else-if="!inventoryPanel.records.length" class="empty-state">暂无库存变更记录</div>
+            <div v-else class="inventory-record-list">
+              <article v-for="record in inventoryPanel.records" :key="record.id" class="inventory-record">
+                <div>
+                  <strong>{{ record.beforeStock }} -> {{ record.afterStock }}</strong>
+                  <span>{{ record.changeReason || "未填写原因" }}</span>
+                </div>
+                <div>
+                  <span>{{ record.operatorName || "系统" }}</span>
+                  <time>{{ formatDateTime(record.createdAt) }}</time>
+                </div>
+              </article>
+            </div>
+          </section>
 
           <form v-if="editingProduct" class="editor-panel" @submit.prevent="saveProduct">
             <div class="panel__header">
@@ -381,6 +416,17 @@ const editorMessage = ref("");
 const productFilters = reactive({
   keyword: "",
   categoryId: "" as number | "",
+  lowStockOnly: false,
+  stockThreshold: 5 as number | "",
+});
+
+const inventoryPanel = reactive({
+  productId: 0,
+  productName: "",
+  skuSummary: "",
+  records: [] as any[],
+  loading: false,
+  error: "",
 });
 
 const productForm = reactive({
@@ -478,6 +524,8 @@ async function loadProducts() {
   products.value = await adminApi.getProducts({
     keyword: productFilters.keyword.trim(),
     categoryId: productFilters.categoryId,
+    lowStockOnly: productFilters.lowStockOnly,
+    stockThreshold: productFilters.stockThreshold,
   });
 }
 
@@ -488,6 +536,8 @@ async function loadCategories() {
 async function resetProductFilters() {
   productFilters.keyword = "";
   productFilters.categoryId = "";
+  productFilters.lowStockOnly = false;
+  productFilters.stockThreshold = 5;
   await loadProducts();
 }
 
@@ -560,6 +610,38 @@ async function adjustStock(product: any, sku: any) {
     reason,
   });
   await loadProducts();
+  if (inventoryPanel.productId === product.id && inventoryPanel.skuSummary === sku.skuSummary) {
+    await openInventoryRecords(product, sku);
+  }
+}
+
+async function openInventoryRecords(product: any, sku: any) {
+  inventoryPanel.productId = product.id;
+  inventoryPanel.productName = product.name;
+  inventoryPanel.skuSummary = sku.skuSummary || `${sku.material} / ${sku.ringSize} / ${sku.weightDesc}`;
+  inventoryPanel.loading = true;
+  inventoryPanel.error = "";
+  try {
+    inventoryPanel.records = await adminApi.getInventoryRecords(product.id, sku.id);
+  } catch (error) {
+    inventoryPanel.records = [];
+    inventoryPanel.error = error instanceof Error ? error.message : "加载库存流水失败";
+  } finally {
+    inventoryPanel.loading = false;
+  }
+}
+
+function closeInventoryRecords() {
+  inventoryPanel.productId = 0;
+  inventoryPanel.productName = "";
+  inventoryPanel.skuSummary = "";
+  inventoryPanel.records = [];
+  inventoryPanel.loading = false;
+  inventoryPanel.error = "";
+}
+
+function formatDateTime(value: string) {
+  return value ? new Date(value).toLocaleString() : "";
 }
 
 async function openEditor(product: any) {
@@ -990,6 +1072,62 @@ button {
   width: 100%;
   height: 220px;
   object-fit: cover;
+}
+
+.inventory-panel {
+  margin-top: 18px;
+  padding: 20px 24px;
+  border-radius: 8px;
+  background: #fff9f1;
+  border: 1px solid rgba(133, 104, 53, 0.12);
+}
+
+.inventory-record-list {
+  display: grid;
+  gap: 12px;
+}
+
+.inventory-record {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #f7efe2;
+}
+
+.inventory-record strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.inventory-record span,
+.inventory-record time {
+  color: #7a684d;
+  font-size: 13px;
+}
+
+.empty-state {
+  padding: 18px 0;
+  color: #8a7550;
+}
+
+.low-stock-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f4d6c8;
+  color: #9a4f2f;
+  white-space: nowrap;
+}
+
+.stock-warning {
+  color: #9a4f2f;
+}
+
+.product-filter-toggle {
+  align-self: end;
 }
 
 .product-card__body,
