@@ -1,0 +1,31 @@
+{
+  "name": "鎏金珠宝",
+  "appid": "__UNI__JEWELRY__",
+  "description": "珠宝微信小程序示范项目",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "app-plus": {
+    "usingComponents": true,
+    "nvueStyleCompiler": "uni-app",
+    "compilerVersion": 3,
+    "splashscreen": {
+      "alwaysShowBeforeRender": true,
+      "waiting": true,
+      "autoclose": true,
+      "delay": 0
+    }
+  },
+  "quickapp": {},
+  "mp-weixin": {
+    "appid": "请替换为你的小程序 appid",
+    "setting": {
+      "urlCheck": false
+    },
+    "usingComponents": true
+  },
+  "uniStatistics": {
+    "enable": false
+  },
+  "vueVersion": "3"
+}

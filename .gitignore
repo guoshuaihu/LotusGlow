@@ -1,0 +1,11 @@
+backend/target/
+admin/node_modules/
+admin/dist/
+miniapp/node_modules/
+miniapp/dist/
+miniapp/unpackage/
+.runtime-logs/
+runtime-logs/
+backend.zip
+*.log
+.DS_Store

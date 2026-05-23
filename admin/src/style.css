@@ -1,0 +1,22 @@
+:root {
+  font-family: "Baskerville Old Face", "Noto Serif SC", serif;
+  color: #2d2418;
+  background: #f5efe5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}

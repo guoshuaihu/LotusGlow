@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: jewelry-backend
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:jewelry;MODE=MYSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:create}
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+  jackson:
+    default-property-inclusion: non_null
+    time-zone: Asia/Shanghai
+  h2:
+    console:
+      enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  security:
+    token-secret: jewelry-miniapp-secret-2026
+    expire-seconds: 259200
+  wechat:
+    miniapp:
+      app-id: ${WECHAT_APP_ID:}
+      app-secret: ${WECHAT_APP_SECRET:}
+      mock-enabled: ${WECHAT_MOCK_ENABLED:true}
