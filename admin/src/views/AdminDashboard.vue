@@ -4,8 +4,8 @@
 
     <section v-if="!session.token" class="login-panel">
       <div class="login-copy">
-        <p class="eyebrow">JEWELRY V2 OPS</p>
-        <h1>珠宝商城运营后台</h1>
+        <p class="eyebrow">LOTUSGLOW V2 OPS</p>
+        <h1>LotusGlow 运营后台</h1>
         <p class="login-copy__text">
           V2 版本已经补齐商品运营、订单履约、售后审核和基础角色分权。你可以直接用不同角色登录，体验真实运营链路。
         </p>
@@ -35,7 +35,7 @@
       <aside class="sidebar">
         <div>
           <p class="eyebrow">V2 CONTROL CENTER</p>
-          <h2>Jewelry Console</h2>
+          <h2>LotusGlow Console</h2>
           <p class="sidebar__user">{{ session.displayName }}</p>
           <p class="sidebar__role">{{ session.roleName || "UNKNOWN" }}</p>
         </div>

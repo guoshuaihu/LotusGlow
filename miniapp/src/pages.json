@@ -3,7 +3,7 @@
     {
       "path": "pages/home/index",
       "style": {
-        "navigationBarTitleText": "沁园珠宝",
+        "navigationBarTitleText": "LotusGlow",
         "navigationBarTextStyle": "black",
         "navigationBarBackgroundColor": "#fffdf8"
       }
@@ -11,7 +11,7 @@
     {
       "path": "pages/catalog/index",
       "style": {
-        "navigationBarTitleText": "甄选珠宝"
+        "navigationBarTitleText": "LotusGlow"
       }
     },
     {
@@ -35,7 +35,7 @@
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "沁园珠宝",
+    "navigationBarTitleText": "LotusGlow",
     "navigationBarBackgroundColor": "#fffdf8",
     "backgroundColor": "#f6f2ea"
   },

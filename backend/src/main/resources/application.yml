@@ -1,8 +1,8 @@
 spring:
   application:
-    name: jewelry-backend
+    name: lotusglow-backend
   datasource:
-    url: ${DB_URL:jdbc:h2:mem:jewelry;MODE=MYSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}
+    url: ${DB_URL:jdbc:h2:mem:lotusglow;MODE=MYSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}
     driver-class-name: ${DB_DRIVER:org.h2.Driver}
     username: ${DB_USERNAME:sa}
     password: ${DB_PASSWORD:}
@@ -30,7 +30,7 @@ springdoc:
 
 app:
   security:
-    token-secret: jewelry-miniapp-secret-2026
+    token-secret: lotusglow-miniapp-secret-2026
     expire-seconds: 259200
   wechat:
     miniapp:

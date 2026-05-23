@@ -12,10 +12,10 @@
     </parent>
 
     <groupId>com.zyx</groupId>
-    <artifactId>jewelry-backend</artifactId>
+    <artifactId>lotusglow-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>jewelry-backend</name>
-    <description>珠宝微信小程序后端</description>
+    <name>LotusGlow Backend</name>
+    <description>LotusGlow 后端服务</description>
 
     <properties>
         <java.version>21</java.version>
