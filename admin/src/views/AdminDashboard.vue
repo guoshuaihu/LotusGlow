@@ -75,6 +75,15 @@
           </div>
         </header>
 
+          <div v-if="selectedProductIds.length" class="batch-toolbar">
+            <span>已选 {{ selectedProductIds.length }} 个商品</span>
+            <button type="button" @click="bulkSetStatus('ON_SALE')">批量上架</button>
+            <button type="button" @click="bulkSetStatus('OFF_SALE')">批量下架</button>
+            <button type="button" class="secondary-button" @click="bulkMoveCategory">批量改分类</button>
+            <button type="button" class="secondary-button" @click="bulkEditTags">批量改标签</button>
+            <button type="button" class="secondary-button" @click="clearSelection">清空选择</button>
+          </div>
+
         <section v-if="currentView === 'orders'" class="panel">
           <div class="panel__header">
             <div>
@@ -138,6 +147,9 @@
 
           <div class="product-grid">
             <article v-for="product in products" :key="product.id" class="product-card">
+              <label class="product-select">
+                <input type="checkbox" :checked="isProductSelected(product.id)" @change="toggleProductSelection(product.id)" />
+              </label>
               <img :src="product.coverImage || fallbackImage" :alt="product.name" />
               <div class="product-card__body">
                 <div class="product-card__top">
@@ -412,6 +424,7 @@ const homeConfig = ref<any>({});
 const customRequests = ref<any[]>([]);
 const editingProduct = ref<any | null>(null);
 const editorMessage = ref("");
+const selectedProductIds = ref<number[]>([]);
 
 const productFilters = reactive({
   keyword: "",
@@ -527,10 +540,53 @@ async function loadProducts() {
     lowStockOnly: productFilters.lowStockOnly,
     stockThreshold: productFilters.stockThreshold,
   });
+  selectedProductIds.value = selectedProductIds.value.filter((id) => products.value.some((product) => product.id === id));
 }
 
 async function loadCategories() {
   categories.value = await adminApi.getCategories();
+}
+
+function isProductSelected(productId: number) {
+  return selectedProductIds.value.includes(productId);
+}
+
+function toggleProductSelection(productId: number) {
+  if (isProductSelected(productId)) {
+    selectedProductIds.value = selectedProductIds.value.filter((id) => id !== productId);
+    return;
+  }
+  selectedProductIds.value = [...selectedProductIds.value, productId];
+}
+
+function clearSelection() {
+  selectedProductIds.value = [];
+}
+
+async function bulkSetStatus(status: "ON_SALE" | "OFF_SALE") {
+  if (!selectedProductIds.value.length) return;
+  await adminApi.batchUpdateProducts({ productIds: selectedProductIds.value, status });
+  clearSelection();
+  await loadProducts();
+}
+
+async function bulkMoveCategory() {
+  if (!selectedProductIds.value.length) return;
+  const categoryId = Number(window.prompt("请输入新的分类ID", String(categories.value[0]?.id || "")) || 0);
+  if (!categoryId) return;
+  await adminApi.batchUpdateProducts({ productIds: selectedProductIds.value, categoryId });
+  clearSelection();
+  await loadProducts();
+}
+
+async function bulkEditTags() {
+  if (!selectedProductIds.value.length) return;
+  const rawTags = window.prompt("请输入标签，使用英文逗号分隔", "batch,promo");
+  if (rawTags === null) return;
+  const tags = rawTags.split(",").map((tag) => tag.trim()).filter(Boolean);
+  await adminApi.batchUpdateProducts({ productIds: selectedProductIds.value, tags });
+  clearSelection();
+  await loadProducts();
 }
 
 async function resetProductFilters() {

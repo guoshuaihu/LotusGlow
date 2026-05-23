@@ -77,6 +77,32 @@ public class ProductService {
             .toList();
     }
 
+    @Transactional
+    public Map<String, Object> batchUpdateProducts(List<Long> productIds, ProductStatus status, Long categoryId, List<String> tags) {
+        if (productIds == null || productIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "商品ID不能为空");
+        }
+        List<Product> products = productRepository.findAllById(productIds);
+        if (products.size() != productIds.size()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "存在商品不存在");
+        }
+        for (Product product : products) {
+            if (status != null) {
+                product.setStatus(status);
+            }
+            if (categoryId != null) {
+                product.setCategoryId(categoryId);
+            }
+            if (tags != null) {
+                product.setTagsCsv(tags.isEmpty() ? "" : String.join(",", tags));
+            }
+        }
+        productRepository.saveAll(products);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("updatedCount", products.size());
+        return response;
+    }
+
     public List<Map<String, Object>> listCategories() {
         return categoryRepository.findAllByOrderBySortOrderAsc().stream()
             .map(category -> {
@@ -491,6 +517,14 @@ public class ProductService {
         ProductStatus status,
         List<MediaCommand> media,
         List<AdminSkuCommand> skus
+    ) {
+    }
+
+    public record BatchUpdateProductCommand(
+        List<Long> productIds,
+        ProductStatus status,
+        Long categoryId,
+        List<String> tags
     ) {
     }
 

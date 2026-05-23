@@ -108,6 +108,37 @@ class AdminProductOperationIntegrationTest {
     }
 
     @Test
+    void shouldBulkUpdateProductStatusCategoryAndTags() throws Exception {
+        String token = loginAdmin("merch", "Merch@123");
+        Long sourceCategoryId = createCategory(token, "Source", "S", 20);
+        Long targetCategoryId = createCategory(token, "Target", "T", 21);
+        ProductFixture first = createProduct(token, sourceCategoryId, "Batch Ring A", "Batch test", "BATCH-A");
+        ProductFixture second = createProduct(token, sourceCategoryId, "Batch Ring B", "Batch test", "BATCH-B");
+
+        mockMvc.perform(post("/api/admin/products/batch")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "productIds": [%d, %d],
+                      "status": "OFF_SALE",
+                      "categoryId": %d,
+                      "tags": ["batch", "featured"]
+                    }
+                    """.formatted(first.productId(), second.productId(), targetCategoryId)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.updatedCount").value(2));
+
+        mockMvc.perform(get("/api/admin/products/" + first.productId())
+                .header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("OFF_SALE"))
+            .andExpect(jsonPath("$.data.categoryId").value(targetCategoryId))
+            .andExpect(jsonPath("$.data.tags[0]").value("batch"))
+            .andExpect(jsonPath("$.data.tags[1]").value("featured"));
+    }
+
+    @Test
     void shouldListLowStockProductsAndInventoryRecords() throws Exception {
         String token = loginAdmin("merch", "Merch@123");
         Long categoryId = createCategory(token, "Inventory", "I", 10);

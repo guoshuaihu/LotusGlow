@@ -87,6 +87,13 @@ public class AdminOperationService {
         return result;
     }
 
+    public Map<String, Object> batchUpdateProducts(ProductService.BatchUpdateProductCommand command) {
+        AdminUser adminUser = adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
+        Map<String, Object> result = productService.batchUpdateProducts(command.productIds(), command.status(), command.categoryId(), command.tags());
+        adminAuditService.log(adminUser, "PRODUCT_BATCH_UPDATE", "PRODUCT", String.valueOf(result.get("updatedCount")), "批量更新商品状态分类标签");
+        return result;
+    }
+
     public Map<String, Object> getHomeConfig() {
         adminAccessService.requirePermission(AdminPermission.CONTENT_MANAGE);
         Map<String, Object> config = new LinkedHashMap<>();

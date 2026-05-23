@@ -56,6 +56,12 @@ export const adminApi = {
       body: JSON.stringify(payload),
     });
   },
+  batchUpdateProducts(payload: { productIds: number[]; status?: string; categoryId?: number; tags?: string[] }) {
+    return apiRequest<any>("/api/admin/products/batch", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
   adjustStock(productId: number, payload: { skuId: number; newStock: number; reason: string }) {
     return apiRequest<any>(`/api/admin/products/${productId}/stock`, {
       method: "PUT",

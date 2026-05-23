@@ -57,6 +57,11 @@ public class AdminOperationController {
         return ApiResponse.success(adminOperationService.getProduct(productId));
     }
 
+    @PostMapping("/products/batch")
+    public ApiResponse<Map<String, Object>> batchUpdateProducts(@Valid @RequestBody BatchUpdateProductRequest request) {
+        return ApiResponse.success(adminOperationService.batchUpdateProducts(toBatchUpdateCommand(request)));
+    }
+
     @GetMapping("/products/{productId}/inventory-records")
     public ApiResponse<List<Map<String, Object>>> listInventoryRecords(@PathVariable Long productId,
                                                                        @RequestParam(required = false) Long skuId) {
@@ -172,7 +177,16 @@ public class AdminOperationController {
                     item.stock(),
                     item.status()
                 ))
-                .toList()
+            .toList()
+        );
+    }
+
+    private ProductService.BatchUpdateProductCommand toBatchUpdateCommand(BatchUpdateProductRequest request) {
+        return new ProductService.BatchUpdateProductCommand(
+            request.productIds(),
+            request.status(),
+            request.categoryId(),
+            request.tags()
         );
     }
 
@@ -268,6 +282,13 @@ public class AdminOperationController {
     public record AuditAfterSaleRequest(
         @NotNull(message = "审核结果不能为空") Boolean approved,
         String remark
+    ) {
+    }
+    public record BatchUpdateProductRequest(
+        @NotNull(message = "商品ID列表不能为空") List<Long> productIds,
+        ProductStatus status,
+        Long categoryId,
+        List<String> tags
     ) {
     }
 }
