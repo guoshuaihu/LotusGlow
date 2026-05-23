@@ -15,8 +15,22 @@ export const adminApi = {
     persistToken(data.token);
     return data;
   },
-  getProducts() {
-    return apiRequest<any[]>("/api/admin/products");
+  getCategories() {
+    return apiRequest<any[]>("/api/admin/categories");
+  },
+  getProducts(params: { keyword?: string; categoryId?: number | "" } = {}) {
+    const search = new URLSearchParams();
+    if (params.keyword) {
+      search.set("keyword", params.keyword);
+    }
+    if (params.categoryId) {
+      search.set("categoryId", String(params.categoryId));
+    }
+    const query = search.toString();
+    return apiRequest<any[]>(`/api/admin/products${query ? `?${query}` : ""}`);
+  },
+  getProduct(productId: number) {
+    return apiRequest<any>(`/api/admin/products/${productId}`);
   },
   createCategory(payload: { name: string; icon: string; sortOrder: number }) {
     return apiRequest<any>("/api/admin/categories", {
@@ -27,6 +41,12 @@ export const adminApi = {
   createProduct(payload: Record<string, unknown>) {
     return apiRequest<any>("/api/admin/products", {
       method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateProduct(productId: number, payload: Record<string, unknown>) {
+    return apiRequest<any>(`/api/admin/products/${productId}`, {
+      method: "PUT",
       body: JSON.stringify(payload),
     });
   },

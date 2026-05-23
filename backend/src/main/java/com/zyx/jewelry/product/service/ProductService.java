@@ -39,9 +39,10 @@ public class ProductService {
     private final InventoryChangeRecordRepository inventoryChangeRecordRepository;
 
     public Map<String, Object> listProducts(String keyword, Long categoryId) {
-        List<Product> products = productRepository.findByStatus(ProductStatus.ON_SALE).stream()
+        List<Product> products = productRepository.findAll().stream()
             .filter(product -> categoryId == null || categoryId.equals(product.getCategoryId()))
             .filter(product -> matchesKeyword(product, keyword))
+            .filter(product -> product.getStatus() == ProductStatus.ON_SALE)
             .toList();
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("total", products.size());
@@ -61,6 +62,27 @@ public class ProductService {
         response.put("media", getMediaMaps(productId));
         response.put("favorited", isFavorited(productId));
         return response;
+    }
+
+    public List<Map<String, Object>> listAdminProducts(String keyword, Long categoryId) {
+        return productRepository.findAll().stream()
+            .filter(product -> categoryId == null || categoryId.equals(product.getCategoryId()))
+            .filter(product -> matchesKeyword(product, keyword))
+            .map(product -> getAdminProductDetail(product.getId()))
+            .toList();
+    }
+
+    public List<Map<String, Object>> listCategories() {
+        return categoryRepository.findAllByOrderBySortOrderAsc().stream()
+            .map(category -> {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", category.getId());
+                map.put("name", category.getName());
+                map.put("icon", category.getIcon());
+                map.put("sortOrder", category.getSortOrder());
+                return map;
+            })
+            .toList();
     }
 
     @Transactional
@@ -84,54 +106,37 @@ public class ProductService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "商品分类不存在");
         }
         Product product = new Product();
-        product.setCategoryId(command.categoryId());
-        product.setName(command.name());
-        product.setSubtitle(command.subtitle());
-        product.setProductNo(command.productNo());
-        product.setBasePrice(command.basePrice());
+        applyProductCommand(product, command.categoryId(), command.name(), command.subtitle(), command.productNo(),
+            command.basePrice(), command.description(), command.certificateInfo(), command.serviceInfo(),
+            command.supportCustom(), command.hotFlag(), command.newFlag(), command.tags(), command.status(), command.media());
         product.setSalesCount(0);
-        product.setDescription(command.description());
-        product.setCertificateInfo(command.certificateInfo());
-        product.setServiceInfo(command.serviceInfo());
-        product.setSupportCustom(Boolean.TRUE.equals(command.supportCustom()));
-        product.setHotFlag(Boolean.TRUE.equals(command.hotFlag()));
-        product.setNewFlag(Boolean.TRUE.equals(command.newFlag()));
-        product.setTagsCsv(command.tags() == null || command.tags().isEmpty() ? "" : String.join(",", command.tags()));
-        product.setStatus(command.status());
-        product.setCoverImage(command.media() == null || command.media().isEmpty() ? null : command.media().getFirst().mediaUrl());
         productRepository.save(product);
+        replaceProductMedia(product.getId(), command.media());
+        createProductSkus(product.getId(), command.skus());
+        return getAdminProductDetail(product.getId());
+    }
 
-        if (command.media() != null) {
-            for (MediaCommand mediaCommand : command.media()) {
-                ProductMedia media = new ProductMedia();
-                media.setProductId(product.getId());
-                media.setMediaType(mediaCommand.mediaType());
-                media.setMediaUrl(mediaCommand.mediaUrl());
-                media.setSortOrder(mediaCommand.sortOrder());
-                productMediaRepository.save(media);
-            }
+    @Transactional
+    public Map<String, Object> updateProduct(Long productId, AdminUpdateProductCommand command) {
+        Product product = productRepository.findById(productId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "商品不存在"));
+        if (!categoryRepository.existsById(command.categoryId())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "商品分类不存在");
         }
-
-        if (command.skus() == null || command.skus().isEmpty()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "商品至少需要一个 SKU");
-        }
-        for (SkuCommand skuCommand : command.skus()) {
-            ProductSku sku = new ProductSku();
-            sku.setProductId(product.getId());
-            sku.setSkuCode(skuCommand.skuCode());
-            sku.setMaterial(skuCommand.material());
-            sku.setRingSize(skuCommand.ringSize());
-            sku.setWeightDesc(skuCommand.weightDesc());
-            sku.setSalePrice(skuCommand.salePrice());
-            sku.setStock(skuCommand.stock());
-            sku.setStatus(skuCommand.status());
-            productSkuRepository.save(sku);
-        }
+        applyProductCommand(product, command.categoryId(), command.name(), command.subtitle(), command.productNo(),
+            command.basePrice(), command.description(), command.certificateInfo(), command.serviceInfo(),
+            command.supportCustom(), command.hotFlag(), command.newFlag(), command.tags(), command.status(), command.media());
+        productRepository.save(product);
+        replaceProductMedia(product.getId(), command.media());
+        replaceProductSkus(product.getId(), command.skus());
         return getAdminProductDetail(product.getId());
     }
 
     @Transactional
     public Map<String, Object> adjustStock(Long productId, Long skuId, Integer newStock, String reason, Long operatorId, String operatorName) {
+        if (newStock == null || newStock < 0) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "库存不能小于 0");
+        }
         Product product = productRepository.findById(productId)
             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "商品不存在"));
         ProductSku sku = productSkuRepository.findById(skuId)
@@ -224,13 +229,121 @@ public class ProductService {
         return sku.getMaterial() + " / " + sku.getRingSize() + " / " + sku.getWeightDesc();
     }
 
+    private void applyProductCommand(Product product,
+                                     Long categoryId,
+                                     String name,
+                                     String subtitle,
+                                     String productNo,
+                                     BigDecimal basePrice,
+                                     String description,
+                                     String certificateInfo,
+                                     String serviceInfo,
+                                     Boolean supportCustom,
+                                     Boolean hotFlag,
+                                     Boolean newFlag,
+                                     List<String> tags,
+                                     ProductStatus status,
+                                     List<MediaCommand> media) {
+        product.setCategoryId(categoryId);
+        product.setName(name);
+        product.setSubtitle(subtitle);
+        product.setProductNo(productNo);
+        product.setBasePrice(basePrice);
+        product.setDescription(description);
+        product.setCertificateInfo(certificateInfo);
+        product.setServiceInfo(serviceInfo);
+        product.setSupportCustom(Boolean.TRUE.equals(supportCustom));
+        product.setHotFlag(Boolean.TRUE.equals(hotFlag));
+        product.setNewFlag(Boolean.TRUE.equals(newFlag));
+        product.setTagsCsv(tags == null || tags.isEmpty() ? "" : String.join(",", tags));
+        product.setStatus(status);
+        product.setCoverImage(media == null || media.isEmpty() ? null : media.getFirst().mediaUrl());
+    }
+
+    private void replaceProductMedia(Long productId, List<MediaCommand> mediaCommands) {
+        productMediaRepository.deleteByProductId(productId);
+        if (mediaCommands == null) {
+            return;
+        }
+        for (MediaCommand mediaCommand : mediaCommands) {
+            ProductMedia media = new ProductMedia();
+            media.setProductId(productId);
+            media.setMediaType(mediaCommand.mediaType());
+            media.setMediaUrl(mediaCommand.mediaUrl());
+            media.setSortOrder(mediaCommand.sortOrder());
+            productMediaRepository.save(media);
+        }
+    }
+
+    private void replaceProductSkus(Long productId, List<AdminSkuCommand> skuCommands) {
+        if (skuCommands == null || skuCommands.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "商品至少需要一个 SKU");
+        }
+        List<ProductSku> existingSkus = productSkuRepository.findByProductIdOrderByIdAsc(productId);
+        int existingIndex = 0;
+        for (AdminSkuCommand skuCommand : skuCommands) {
+            ProductSku sku;
+            if (skuCommand.id() != null) {
+                sku = productSkuRepository.findById(skuCommand.id())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "SKU 不存在"));
+                if (!productId.equals(sku.getProductId())) {
+                    throw new BusinessException(ErrorCode.BAD_REQUEST, "SKU 不属于当前商品");
+                }
+            } else if (existingIndex < existingSkus.size()) {
+                sku = existingSkus.get(existingIndex);
+            } else {
+                sku = new ProductSku();
+                sku.setProductId(productId);
+            }
+            existingIndex++;
+            sku.setProductId(productId);
+            sku.setSkuCode(skuCommand.skuCode());
+            sku.setMaterial(skuCommand.material());
+            sku.setRingSize(skuCommand.ringSize());
+            sku.setWeightDesc(skuCommand.weightDesc());
+            sku.setSalePrice(skuCommand.salePrice());
+            sku.setStock(skuCommand.stock());
+            sku.setStatus(skuCommand.status());
+            productSkuRepository.save(sku);
+        }
+        if (existingSkus.size() > skuCommands.size()) {
+            existingSkus.stream().skip(skuCommands.size()).forEach(sku -> {
+                sku.setStatus(SkuStatus.DISABLED);
+                productSkuRepository.save(sku);
+            });
+        }
+    }
+
+    private void createProductSkus(Long productId, List<SkuCommand> skuCommands) {
+        if (skuCommands == null || skuCommands.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "商品至少需要一个 SKU");
+        }
+        for (SkuCommand skuCommand : skuCommands) {
+            ProductSku sku = new ProductSku();
+            sku.setProductId(productId);
+            sku.setSkuCode(skuCommand.skuCode());
+            sku.setMaterial(skuCommand.material());
+            sku.setRingSize(skuCommand.ringSize());
+            sku.setWeightDesc(skuCommand.weightDesc());
+            sku.setSalePrice(skuCommand.salePrice());
+            sku.setStock(skuCommand.stock());
+            sku.setStatus(skuCommand.status());
+            productSkuRepository.save(sku);
+        }
+    }
+
     private boolean matchesKeyword(Product product, String keyword) {
         if (!StringUtils.hasText(keyword)) {
             return true;
         }
         String normalized = keyword.toLowerCase(Locale.ROOT);
-        return product.getName().toLowerCase(Locale.ROOT).contains(normalized)
-            || product.getSubtitle().toLowerCase(Locale.ROOT).contains(normalized);
+        return containsIgnoreCase(product.getName(), normalized)
+            || containsIgnoreCase(product.getSubtitle(), normalized)
+            || containsIgnoreCase(product.getProductNo(), normalized);
+    }
+
+    private boolean containsIgnoreCase(String source, String keyword) {
+        return StringUtils.hasText(source) && source.toLowerCase(Locale.ROOT).contains(keyword);
     }
 
     private List<Map<String, Object>> getMediaMaps(Long productId) {
@@ -297,6 +410,25 @@ public class ProductService {
     ) {
     }
 
+    public record AdminUpdateProductCommand(
+        Long categoryId,
+        String name,
+        String subtitle,
+        String productNo,
+        BigDecimal basePrice,
+        String description,
+        String certificateInfo,
+        String serviceInfo,
+        Boolean supportCustom,
+        Boolean hotFlag,
+        Boolean newFlag,
+        List<String> tags,
+        ProductStatus status,
+        List<MediaCommand> media,
+        List<AdminSkuCommand> skus
+    ) {
+    }
+
     public record MediaCommand(
         String mediaType,
         String mediaUrl,
@@ -305,6 +437,18 @@ public class ProductService {
     }
 
     public record SkuCommand(
+        String skuCode,
+        String material,
+        String ringSize,
+        String weightDesc,
+        BigDecimal salePrice,
+        Integer stock,
+        SkuStatus status
+    ) {
+    }
+
+    public record AdminSkuCommand(
+        Long id,
         String skuCode,
         String material,
         String ringSize,

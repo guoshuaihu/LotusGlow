@@ -1,13 +1,11 @@
 <template>
   <div class="dashboard-shell">
-    <div class="dashboard-backdrop"></div>
-
     <section v-if="!session.token" class="login-panel">
       <div class="login-copy">
-        <p class="eyebrow">LOTUSGLOW V2 OPS</p>
+        <p class="eyebrow">LOTUSGLOW OPS</p>
         <h1>LotusGlow 运营后台</h1>
         <p class="login-copy__text">
-          V2 版本已经补齐商品运营、订单履约、售后审核和基础角色分权。你可以直接用不同角色登录，体验真实运营链路。
+          商品、库存、订单和售后集中处理。商品运营可以维护商品与库存，客服账号只保留订单履约和售后能力。
         </p>
         <div class="account-hints">
           <article v-for="account in accountHints" :key="account.username" class="hint-card">
@@ -27,15 +25,15 @@
           <input v-model="loginForm.password" type="password" placeholder="请输入密码" />
         </label>
         <button type="submit">进入控制台</button>
-        <p class="login-tip">{{ errorMessage || "推荐先试 merch 和 service，对比商品运营与客服权限差异。" }}</p>
+        <p class="login-tip">{{ errorMessage || "推荐使用 merch 体验商品运营能力。" }}</p>
       </form>
     </section>
 
     <section v-else class="workspace">
       <aside class="sidebar">
         <div>
-          <p class="eyebrow">V2 CONTROL CENTER</p>
-          <h2>LotusGlow Console</h2>
+          <p class="eyebrow">CONTROL CENTER</p>
+          <h2>LotusGlow</h2>
           <p class="sidebar__user">{{ session.displayName }}</p>
           <p class="sidebar__role">{{ session.roleName || "UNKNOWN" }}</p>
         </div>
@@ -59,7 +57,7 @@
         <header class="hero">
           <div>
             <p class="eyebrow">运营概览</p>
-            <h1>V2 已进入可运营阶段，重点看库存、待发货和待审核售后。</h1>
+            <h1>围绕商品、库存和履约推进日常运营。</h1>
           </div>
           <div class="hero__metrics">
             <article class="metric-card">
@@ -81,7 +79,7 @@
           <div class="panel__header">
             <div>
               <h3>订单履约</h3>
-              <p>客服角色可以直接录入物流单号，完成从待发货到已发货的流转。</p>
+              <p>录入物流信息后，订单会从待发货流转到已发货。</p>
             </div>
           </div>
           <div class="order-table">
@@ -104,7 +102,7 @@
           <div class="panel__header">
             <div>
               <h3>商品运营</h3>
-              <p>支持新增分类、创建样例商品，以及对 SKU 库存做快速补货。</p>
+              <p>支持搜索、分类筛选、编辑商品和快速调整 SKU 库存。</p>
             </div>
             <div class="panel__actions">
               <button @click="createCategory">新增分类</button>
@@ -112,9 +110,27 @@
             </div>
           </div>
 
+          <div class="product-toolbar">
+            <label>
+              <span>关键词</span>
+              <input v-model="productFilters.keyword" placeholder="名称 / 副标题 / 编号" @keyup.enter="loadProducts" />
+            </label>
+            <label>
+              <span>分类</span>
+              <select v-model="productFilters.categoryId">
+                <option value="">全部分类</option>
+                <option v-for="category in categories" :key="category.id" :value="category.id">
+                  {{ category.name }}
+                </option>
+              </select>
+            </label>
+            <button @click="loadProducts">查询</button>
+            <button class="secondary-button" @click="resetProductFilters">重置</button>
+          </div>
+
           <div class="product-grid">
             <article v-for="product in products" :key="product.id" class="product-card">
-              <img :src="product.coverImage" :alt="product.name" />
+              <img :src="product.coverImage || fallbackImage" :alt="product.name" />
               <div class="product-card__body">
                 <div class="product-card__top">
                   <div>
@@ -125,25 +141,138 @@
                 </div>
                 <div class="product-card__meta">
                   <span>￥{{ product.basePrice }}</span>
+                  <span>{{ categoryName(product.categoryId) }}</span>
                   <span>SKU {{ product.skus?.length || 0 }}</span>
                 </div>
                 <div v-if="product.skus?.length" class="sku-list">
                   <div v-for="sku in product.skus" :key="sku.id" class="sku-row">
-                    <span>{{ sku.material }} / {{ sku.ringSize }}</span>
+                    <span>{{ sku.material }} / {{ sku.ringSize }} / {{ sku.weightDesc }}</span>
                     <strong>库存 {{ sku.stock }}</strong>
+                    <button class="tiny-button" @click="adjustStock(product, sku)">改库存</button>
                   </div>
                 </div>
-                <button class="secondary-button" @click="adjustStock(product)">调整库存</button>
+                <div class="product-card__actions">
+                  <button class="secondary-button" @click="openEditor(product)">编辑商品</button>
+                </div>
               </div>
             </article>
           </div>
+
+          <form v-if="editingProduct" class="editor-panel" @submit.prevent="saveProduct">
+            <div class="panel__header">
+              <div>
+                <h3>编辑商品</h3>
+                <p>{{ editingProduct.name || "未命名商品" }}</p>
+              </div>
+              <button type="button" class="secondary-button" @click="closeEditor">关闭</button>
+            </div>
+
+            <div class="editor-grid">
+              <label>
+                <span>商品名称</span>
+                <input v-model="productForm.name" required />
+              </label>
+              <label>
+                <span>商品编号</span>
+                <input v-model="productForm.productNo" required />
+              </label>
+              <label>
+                <span>分类</span>
+                <select v-model.number="productForm.categoryId" required>
+                  <option v-for="category in categories" :key="category.id" :value="category.id">
+                    {{ category.name }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>基础价</span>
+                <input v-model.number="productForm.basePrice" type="number" min="0" step="0.01" required />
+              </label>
+              <label>
+                <span>副标题</span>
+                <input v-model="productForm.subtitle" />
+              </label>
+              <label>
+                <span>状态</span>
+                <select v-model="productForm.status">
+                  <option value="ON_SALE">ON_SALE</option>
+                  <option value="OFF_SALE">OFF_SALE</option>
+                </select>
+              </label>
+              <label class="editor-span">
+                <span>标签</span>
+                <input v-model="productForm.tagsText" placeholder="多个标签用逗号分隔" />
+              </label>
+              <label class="editor-span">
+                <span>描述</span>
+                <textarea v-model="productForm.description" rows="3" />
+              </label>
+              <label>
+                <span>证书信息</span>
+                <input v-model="productForm.certificateInfo" />
+              </label>
+              <label>
+                <span>服务信息</span>
+                <input v-model="productForm.serviceInfo" />
+              </label>
+              <label class="checkbox-row">
+                <input v-model="productForm.supportCustom" type="checkbox" />
+                <span>支持定制</span>
+              </label>
+              <label class="checkbox-row">
+                <input v-model="productForm.hotFlag" type="checkbox" />
+                <span>热卖</span>
+              </label>
+              <label class="checkbox-row">
+                <input v-model="productForm.newFlag" type="checkbox" />
+                <span>新品</span>
+              </label>
+            </div>
+
+            <div class="editor-section">
+              <div class="section-title">
+                <strong>图片</strong>
+                <button type="button" class="tiny-button" @click="addMedia">新增图片</button>
+              </div>
+              <div v-for="(media, index) in productForm.media" :key="index" class="media-row">
+                <input v-model="media.mediaUrl" placeholder="图片 URL" />
+                <input v-model.number="media.sortOrder" type="number" min="1" />
+                <button type="button" class="tiny-button" @click="removeMedia(index)">删除</button>
+              </div>
+            </div>
+
+            <div class="editor-section">
+              <div class="section-title">
+                <strong>SKU</strong>
+                <button type="button" class="tiny-button" @click="addSku">新增 SKU</button>
+              </div>
+              <div v-for="(sku, index) in productForm.skus" :key="index" class="sku-editor-row">
+                <input v-model="sku.skuCode" placeholder="SKU 编码" />
+                <input v-model="sku.material" placeholder="材质" />
+                <input v-model="sku.ringSize" placeholder="规格" />
+                <input v-model="sku.weightDesc" placeholder="克重" />
+                <input v-model.number="sku.salePrice" type="number" min="0" step="0.01" placeholder="售价" />
+                <input v-model.number="sku.stock" type="number" min="0" placeholder="库存" />
+                <select v-model="sku.status">
+                  <option value="ENABLED">ENABLED</option>
+                  <option value="DISABLED">DISABLED</option>
+                </select>
+                <button type="button" class="tiny-button" @click="removeSku(index)">移除</button>
+              </div>
+            </div>
+
+            <div class="editor-actions">
+              <button type="submit">保存商品</button>
+              <span>{{ editorMessage }}</span>
+            </div>
+          </form>
         </section>
 
         <section v-if="currentView === 'afterSales'" class="panel">
           <div class="panel__header">
             <div>
               <h3>售后审核</h3>
-              <p>用户申请后，客服可以直接审批并联动退款状态与订单状态。</p>
+              <p>审核通过后会联动退款状态和订单状态。</p>
             </div>
           </div>
           <div class="request-list">
@@ -167,7 +296,7 @@
           <div class="panel__header">
             <div>
               <h3>首页内容</h3>
-              <p>这里继续保留 Banner 和内容块预览，方便确认品牌展示与转化入口的平衡。</p>
+              <p>Banner 和内容块预览。</p>
             </div>
           </div>
           <div class="banner-grid">
@@ -185,7 +314,7 @@
           <div class="panel__header">
             <div>
               <h3>定制线索</h3>
-              <p>轻定制依旧保留为客服跟进入口，重点看刻字和尺寸偏好。</p>
+              <p>客服跟进刻字、尺寸和材质偏好。</p>
             </div>
           </div>
           <div class="request-list">
@@ -209,6 +338,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { adminApi } from "../api";
+
+const fallbackImage = "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1200&q=80";
 
 const accountHints = [
   { label: "超级管理员", username: "admin", password: "Admin@123" },
@@ -238,11 +369,37 @@ const session = reactive({
   permissions: JSON.parse(localStorage.getItem("JEWELRY_ADMIN_PERMISSIONS") || "[]") as string[],
 });
 
+const categories = ref<any[]>([]);
 const products = ref<any[]>([]);
 const orders = ref<any[]>([]);
 const afterSales = ref<any[]>([]);
 const homeConfig = ref<any>({});
 const customRequests = ref<any[]>([]);
+const editingProduct = ref<any | null>(null);
+const editorMessage = ref("");
+
+const productFilters = reactive({
+  keyword: "",
+  categoryId: "" as number | "",
+});
+
+const productForm = reactive({
+  categoryId: 0,
+  name: "",
+  subtitle: "",
+  productNo: "",
+  basePrice: 0,
+  description: "",
+  certificateInfo: "",
+  serviceInfo: "",
+  supportCustom: false,
+  hotFlag: false,
+  newFlag: false,
+  tagsText: "",
+  status: "ON_SALE",
+  media: [] as any[],
+  skus: [] as any[],
+});
 
 const visibleNavItems = computed(() =>
   navItems.filter((item) => hasPermission(item.permission)),
@@ -287,11 +444,12 @@ async function handleLogin() {
 
 async function loadDashboard() {
   const tasks: Promise<void>[] = [];
-
   if (hasPermission("PRODUCT_MANAGE")) {
-    tasks.push(adminApi.getProducts().then((data) => { products.value = data; }));
+    tasks.push(loadProducts());
+    tasks.push(loadCategories());
   } else {
     products.value = [];
+    categories.value = [];
   }
   if (hasPermission("ORDER_MANAGE")) {
     tasks.push(adminApi.getOrders().then((data) => { orders.value = data; }));
@@ -313,16 +471,34 @@ async function loadDashboard() {
   } else {
     customRequests.value = [];
   }
-
   await Promise.all(tasks);
+}
+
+async function loadProducts() {
+  products.value = await adminApi.getProducts({
+    keyword: productFilters.keyword.trim(),
+    categoryId: productFilters.categoryId,
+  });
+}
+
+async function loadCategories() {
+  categories.value = await adminApi.getCategories();
+}
+
+async function resetProductFilters() {
+  productFilters.keyword = "";
+  productFilters.categoryId = "";
+  await loadProducts();
+}
+
+function categoryName(categoryId: number) {
+  return categories.value.find((item) => item.id === categoryId)?.name || `分类 ${categoryId}`;
 }
 
 async function shipOrder(orderNo: string) {
   const company = window.prompt("请输入物流公司", "SF");
   const trackingNo = window.prompt("请输入物流单号", `SF-${Date.now()}`);
-  if (!company || !trackingNo) {
-    return;
-  }
+  if (!company || !trackingNo) return;
   await adminApi.shipOrder(orderNo, { company, trackingNo });
   await loadDashboard();
 }
@@ -333,19 +509,19 @@ async function createCategory() {
   const icon = window.prompt("请输入分类图标", "B") || "B";
   const sortOrder = Number(window.prompt("请输入排序值", "9") || 9);
   await adminApi.createCategory({ name, icon, sortOrder });
-  await loadDashboard();
+  await loadCategories();
 }
 
 async function createSampleProduct() {
-  const categoryId = Number(window.prompt("请输入分类 ID", "1") || 1);
+  const categoryId = Number(window.prompt("请输入分类 ID", String(categories.value[0]?.id || 1)) || categories.value[0]?.id || 1);
   const suffix = Date.now().toString().slice(-6);
   await adminApi.createProduct({
     categoryId,
     name: `Aurora Ring ${suffix}`,
-    subtitle: "V2 后台创建的样例珠宝",
+    subtitle: "后台创建的样例珠宝",
     productNo: `AURORA-${suffix}`,
     basePrice: 3999,
-    description: "可用于演示商品运营、SKU 库存与售后闭环。",
+    description: "用于演示商品运营、SKU 库存与售后闭环。",
     certificateInfo: "GIC Certified",
     serviceInfo: "Express shipping and gift box",
     supportCustom: true,
@@ -354,7 +530,7 @@ async function createSampleProduct() {
     tags: ["v2", "ops"],
     status: "ON_SALE",
     media: [
-      { mediaType: "IMAGE", mediaUrl: "https://example.com/aurora.jpg", sortOrder: 1 },
+      { mediaType: "IMAGE", mediaUrl: fallbackImage, sortOrder: 1 },
     ],
     skus: [
       {
@@ -368,23 +544,115 @@ async function createSampleProduct() {
       },
     ],
   });
-  await loadDashboard();
+  await loadProducts();
 }
 
-async function adjustStock(product: any) {
-  const sku = product.skus?.[0];
-  if (!sku) {
-    window.alert("当前商品没有可调整的 SKU。");
+async function adjustStock(product: any, sku: any) {
+  const newStock = Number(window.prompt(`请输入 SKU ${sku.skuCode} 的新库存`, String(sku.stock)) || sku.stock);
+  if (Number.isNaN(newStock) || newStock < 0) {
+    window.alert("库存必须是大于等于 0 的数字。");
     return;
   }
-  const newStock = Number(window.prompt(`请输入 SKU ${sku.skuCode} 的新库存`, String(sku.stock)) || sku.stock);
   const reason = window.prompt("请输入调整原因", "manual replenishment") || "manual replenishment";
   await adminApi.adjustStock(product.id, {
     skuId: sku.id,
     newStock,
     reason,
   });
-  await loadDashboard();
+  await loadProducts();
+}
+
+async function openEditor(product: any) {
+  const detail = await adminApi.getProduct(product.id);
+  editingProduct.value = detail;
+  editorMessage.value = "";
+  fillProductForm(detail);
+}
+
+function fillProductForm(product: any) {
+  productForm.categoryId = product.categoryId;
+  productForm.name = product.name || "";
+  productForm.subtitle = product.subtitle || "";
+  productForm.productNo = product.productNo || "";
+  productForm.basePrice = Number(product.basePrice || 0);
+  productForm.description = product.description || "";
+  productForm.certificateInfo = product.certificateInfo || "";
+  productForm.serviceInfo = product.serviceInfo || "";
+  productForm.supportCustom = Boolean(product.supportCustom);
+  productForm.hotFlag = Boolean(product.hotFlag);
+  productForm.newFlag = Boolean(product.newFlag);
+  productForm.tagsText = (product.tags || []).join(",");
+  productForm.status = product.status || "ON_SALE";
+  productForm.media = (product.media || []).map((item: any, index: number) => ({
+    mediaType: item.mediaType || "IMAGE",
+    mediaUrl: item.mediaUrl || "",
+    sortOrder: item.sortOrder || index + 1,
+  }));
+  productForm.skus = (product.skus || []).map((item: any) => ({ ...item }));
+}
+
+async function saveProduct() {
+  if (!editingProduct.value) return;
+  editorMessage.value = "保存中...";
+  const payload = {
+    categoryId: productForm.categoryId,
+    name: productForm.name,
+    subtitle: productForm.subtitle,
+    productNo: productForm.productNo,
+    basePrice: productForm.basePrice,
+    description: productForm.description,
+    certificateInfo: productForm.certificateInfo,
+    serviceInfo: productForm.serviceInfo,
+    supportCustom: productForm.supportCustom,
+    hotFlag: productForm.hotFlag,
+    newFlag: productForm.newFlag,
+    tags: productForm.tagsText.split(",").map((tag) => tag.trim()).filter(Boolean),
+    status: productForm.status,
+    media: productForm.media.map((item, index) => ({
+      mediaType: item.mediaType || "IMAGE",
+      mediaUrl: item.mediaUrl,
+      sortOrder: item.sortOrder || index + 1,
+    })),
+    skus: productForm.skus,
+  };
+  editingProduct.value = await adminApi.updateProduct(editingProduct.value.id, payload);
+  fillProductForm(editingProduct.value);
+  await loadProducts();
+  editorMessage.value = "已保存";
+}
+
+function closeEditor() {
+  editingProduct.value = null;
+  editorMessage.value = "";
+}
+
+function addMedia() {
+  productForm.media.push({ mediaType: "IMAGE", mediaUrl: fallbackImage, sortOrder: productForm.media.length + 1 });
+}
+
+function removeMedia(index: number) {
+  productForm.media.splice(index, 1);
+}
+
+function addSku() {
+  productForm.skus.push({
+    id: null,
+    skuCode: `SKU-${Date.now().toString().slice(-6)}`,
+    material: "18K Gold",
+    ringSize: "12",
+    weightDesc: "3g",
+    salePrice: productForm.basePrice || 0,
+    stock: 0,
+    status: "ENABLED",
+  });
+}
+
+function removeSku(index: number) {
+  if (productForm.skus.length <= 1) {
+    window.alert("商品至少需要保留一个 SKU。");
+    return;
+  }
+  productForm.skus.splice(index, 1);
 }
 
 async function auditAfterSale(item: any, approved: boolean) {
@@ -412,32 +680,22 @@ function logout() {
 .dashboard-shell {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(197, 171, 109, 0.16), transparent 24%),
-    linear-gradient(180deg, #f7f0e5 0%, #eadcca 100%);
-  color: #2d2418;
-}
-
-.dashboard-backdrop {
-  position: fixed;
-  inset: 0;
-  background-image:
     linear-gradient(rgba(154, 125, 69, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(154, 125, 69, 0.05) 1px, transparent 1px);
-  background-size: 28px 28px;
-  pointer-events: none;
+    linear-gradient(90deg, rgba(154, 125, 69, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, #f7f0e5 0%, #eadcca 100%);
+  background-size: 28px 28px, 28px 28px, auto;
+  color: #2d2418;
 }
 
 .login-panel,
 .workspace {
-  position: relative;
-  z-index: 1;
+  min-height: 100vh;
 }
 
 .login-panel {
   display: grid;
   grid-template-columns: 1.1fr 0.9fr;
   gap: 32px;
-  min-height: 100vh;
   padding: 56px;
   align-items: center;
 }
@@ -471,8 +729,9 @@ function logout() {
 .login-card,
 .sidebar,
 .hero,
-.panel {
-  background: rgba(255, 251, 245, 0.82);
+.panel,
+.editor-panel {
+  background: rgba(255, 251, 245, 0.88);
   border: 1px solid rgba(152, 119, 56, 0.16);
   box-shadow: 0 24px 60px rgba(81, 59, 20, 0.08);
   backdrop-filter: blur(16px);
@@ -480,62 +739,69 @@ function logout() {
 
 .hint-card {
   padding: 16px;
-  border-radius: 20px;
+  border-radius: 8px;
   display: grid;
   gap: 6px;
 }
 
-.hint-card span {
+.hint-card span,
+.login-tip,
+.panel__header p,
+.product-card__body p,
+.request-card p {
   color: #7a684d;
-  font-size: 14px;
 }
 
 .login-card {
   padding: 36px;
-  border-radius: 28px;
+  border-radius: 8px;
   display: grid;
   gap: 18px;
 }
 
-.login-card label {
+.login-card label,
+.product-toolbar label,
+.editor-grid label {
   display: grid;
   gap: 8px;
   color: #6a5a44;
 }
 
-.login-card input,
-.login-card button,
-.nav-item,
-.panel button,
-.logout-button {
-  border-radius: 999px;
-}
-
-.login-card input {
-  border: 1px solid rgba(133, 104, 53, 0.16);
-  padding: 14px 18px;
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid rgba(133, 104, 53, 0.18);
+  border-radius: 8px;
+  padding: 12px 14px;
   background: #fffdf9;
+  color: #2d2418;
 }
 
-.login-card button,
-.panel button,
-.logout-button {
+textarea {
+  resize: vertical;
+}
+
+button {
   border: none;
-  padding: 14px 18px;
+  border-radius: 8px;
+  padding: 12px 16px;
   background: linear-gradient(135deg, #2a2015, #8d6a34);
   color: #fff8ef;
   cursor: pointer;
 }
 
 .secondary-button,
-.button-muted {
+.button-muted,
+.tiny-button {
   background: #efe1c9 !important;
   color: #6f5428 !important;
 }
 
-.login-tip {
-  margin: 0;
-  color: #8d7755;
+.tiny-button {
+  padding: 8px 10px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .workspace {
@@ -546,7 +812,7 @@ function logout() {
 }
 
 .sidebar {
-  border-radius: 28px;
+  border-radius: 8px;
   padding: 28px;
   display: grid;
   align-content: start;
@@ -573,10 +839,10 @@ function logout() {
   border: 1px solid rgba(133, 104, 53, 0.16);
   padding: 16px 18px;
   background: #fffaf3;
+  color: #2d2418;
   text-align: left;
   display: grid;
   gap: 6px;
-  cursor: pointer;
 }
 
 .nav-item--active {
@@ -594,15 +860,16 @@ function logout() {
 }
 
 .hero,
-.panel {
-  border-radius: 28px;
+.panel,
+.editor-panel {
+  border-radius: 8px;
   padding: 28px 32px;
 }
 
 .hero h1 {
   margin: 10px 0 0;
-  font-size: 52px;
-  line-height: 1.06;
+  font-size: 44px;
+  line-height: 1.1;
   max-width: 880px;
 }
 
@@ -615,7 +882,7 @@ function logout() {
 
 .metric-card {
   padding: 20px 22px;
-  border-radius: 24px;
+  border-radius: 8px;
   background: rgba(255, 248, 235, 0.92);
 }
 
@@ -627,14 +894,25 @@ function logout() {
 .metric-card strong {
   display: block;
   margin-top: 8px;
-  font-size: 40px;
+  font-size: 36px;
   color: #7c5b24;
 }
 
-.panel__header {
+.panel__header,
+.product-card__top,
+.product-card__meta,
+.sku-row,
+.request-card__top,
+.request-card__actions,
+.section-title,
+.editor-actions {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  align-items: center;
+}
+
+.panel__header {
   align-items: flex-end;
   margin-bottom: 20px;
 }
@@ -647,7 +925,6 @@ function logout() {
 
 .panel__header p {
   margin: 8px 0 0;
-  color: #73634c;
 }
 
 .panel__actions {
@@ -655,8 +932,18 @@ function logout() {
   gap: 12px;
 }
 
+.product-toolbar {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr auto auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
 .order-table,
-.request-list {
+.request-list,
+.sku-list,
+.editor-section {
   display: grid;
   gap: 14px;
 }
@@ -667,7 +954,7 @@ function logout() {
   gap: 16px;
   align-items: center;
   padding: 18px;
-  border-radius: 22px;
+  border-radius: 8px;
   background: #fff9f1;
 }
 
@@ -681,6 +968,7 @@ function logout() {
   border-radius: 999px;
   background: #efe1c9;
   color: #7a5e2e;
+  white-space: nowrap;
 }
 
 .product-grid,
@@ -692,7 +980,7 @@ function logout() {
 
 .product-card,
 .banner-card {
-  border-radius: 24px;
+  border-radius: 8px;
   overflow: hidden;
   background: #fff9f2;
 }
@@ -709,12 +997,6 @@ function logout() {
   padding: 18px;
 }
 
-.product-card__top {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .product-card__body h4 {
   margin: 0;
   font-size: 22px;
@@ -722,48 +1004,83 @@ function logout() {
 
 .product-card__body p {
   margin: 8px 0 0;
-  color: #79684c;
-}
-
-.product-card__meta,
-.sku-row,
-.request-card__top,
-.request-card__actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .product-card__meta {
   margin: 16px 0 12px;
   color: #7e5b26;
-}
-
-.sku-list {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .sku-row {
   padding: 10px 12px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: #f4ead8;
 }
 
-.request-card p {
-  margin: 0;
-  color: #7e6a50;
+.product-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.editor-panel {
+  margin-top: 18px;
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.editor-span {
+  grid-column: 1 / -1;
+}
+
+.checkbox-row {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.editor-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(133, 104, 53, 0.14);
+}
+
+.media-row,
+.sku-editor-row {
+  display: grid;
+  gap: 10px;
+}
+
+.media-row {
+  grid-template-columns: 1fr 96px auto;
+}
+
+.sku-editor-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) 110px 90px 120px auto;
+}
+
+.editor-actions {
+  margin-top: 20px;
+  justify-content: flex-start;
 }
 
 .eyebrow {
-  letter-spacing: 0.28em;
+  letter-spacing: 0.18em;
   font-size: 12px;
   text-transform: uppercase;
   color: #8f7544;
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1180px) {
   .login-panel,
   .workspace {
     grid-template-columns: 1fr;
@@ -773,11 +1090,15 @@ function logout() {
   .account-hints,
   .hero__metrics,
   .product-grid,
-  .banner-grid {
+  .banner-grid,
+  .editor-grid,
+  .product-toolbar {
     grid-template-columns: 1fr;
   }
 
-  .order-row {
+  .order-row,
+  .media-row,
+  .sku-editor-row {
     grid-template-columns: 1fr;
   }
 }

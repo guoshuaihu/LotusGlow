@@ -7,7 +7,6 @@ import com.zyx.jewelry.order.service.OrderService;
 import com.zyx.jewelry.product.service.ProductService;
 import com.zyx.jewelry.repository.BannerRepository;
 import com.zyx.jewelry.repository.ContentBlockRepository;
-import com.zyx.jewelry.repository.ProductRepository;
 import com.zyx.jewelry.support.service.SupportService;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,7 +19,6 @@ import org.springframework.stereotype.Service;
 public class AdminOperationService {
 
     private final OrderService orderService;
-    private final ProductRepository productRepository;
     private final ProductService productService;
     private final BannerRepository bannerRepository;
     private final ContentBlockRepository contentBlockRepository;
@@ -41,9 +39,19 @@ public class AdminOperationService {
         return result;
     }
 
-    public List<Map<String, Object>> listProducts() {
+    public List<Map<String, Object>> listProducts(String keyword, Long categoryId) {
         adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
-        return productRepository.findAll().stream().map(product -> productService.getAdminProductDetail(product.getId())).toList();
+        return productService.listAdminProducts(keyword, categoryId);
+    }
+
+    public List<Map<String, Object>> listCategories() {
+        adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
+        return productService.listCategories();
+    }
+
+    public Map<String, Object> getProduct(Long productId) {
+        adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
+        return productService.getAdminProductDetail(productId);
     }
 
     public Map<String, Object> createCategory(String name, String icon, Integer sortOrder) {
@@ -57,6 +65,13 @@ public class AdminOperationService {
         AdminUser adminUser = adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
         Map<String, Object> result = productService.createProduct(command);
         adminAuditService.log(adminUser, "PRODUCT_CREATE", "PRODUCT", String.valueOf(result.get("id")), "新增商品和 SKU");
+        return result;
+    }
+
+    public Map<String, Object> updateProduct(Long productId, ProductService.AdminUpdateProductCommand command) {
+        AdminUser adminUser = adminAccessService.requirePermission(AdminPermission.PRODUCT_MANAGE);
+        Map<String, Object> result = productService.updateProduct(productId, command);
+        adminAuditService.log(adminUser, "PRODUCT_UPDATE", "PRODUCT", String.valueOf(productId), "编辑商品和 SKU");
         return result;
     }
 
